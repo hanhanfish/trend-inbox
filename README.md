@@ -33,18 +33,20 @@ uv run --locked python -m agent_digest.setup_wizard
 
 ### 先预览，再试发
 
-```text
-uv run --locked python -m agent_digest daily --dry-run
-uv run --locked python -m agent_digest weekly --dry-run
+安装完成后，在项目根目录运行下面的 Windows PowerShell 命令。macOS 和 Linux 改用 `./.venv/bin/python`，后续参数照抄。
+
+```powershell
+.\.venv\Scripts\python.exe -m agent_digest daily --dry-run
+.\.venv\Scripts\python.exe -m agent_digest weekly --dry-run
 ```
 
 预览保存在 `preview/` 下，有 `.html` 和 `.txt` 两个版本。预览会实时抓榜和调用模型。检查内容后，在手机上验证一次真实邮件：
 
-```text
-uv run --locked python -m agent_digest daily --send
+```powershell
+.\.venv\Scripts\python.exe -m agent_digest daily --send
 ```
 
-这条命令会发出今天的正式早报。当天的定时任务会识别为已发。
+如果今天的正式早报尚未发送，这条命令会发出本期邮件。当日定时任务会跳过已发送的期号。
 
 ## 定时发送
 
@@ -76,9 +78,9 @@ uv run --locked python -m agent_digest daily --send
 - 正式发送需要显式传 `--send`。默认命令生成预览。全部数据源失败时本次报错；部分失败时仍发可用栏目，邮件标明缺失。
 - 邮件传输若遇到结果不确定的中断，系统保留发送记录。先确认原任务已退出，再检查邮箱。确认已到达时用 `--resolve sent`，确认需要重试时用 `--resolve retry`。
 
-```text
-uv run --locked python -m agent_digest daily --edition 2026-11-16 --resolve retry
-uv run --locked python -m agent_digest daily --edition 2026-11-16 --send
+```powershell
+.\.venv\Scripts\python.exe -m agent_digest daily --edition 2026-11-16 --resolve retry
+.\.venv\Scripts\python.exe -m agent_digest daily --edition 2026-11-16 --send
 ```
 
 这里的日期只是示例。周刊的期号格式为 `2026-W47`。补发会重新生成内容，GitHub 项目使用补发时读到的榜单，实际抓取时间在邮件中显示。
