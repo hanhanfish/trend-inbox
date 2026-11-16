@@ -88,14 +88,17 @@ def select_papers(editor: Editor, papers: list[Paper], limit: int) -> list[Paper
     scores = editor.relevance([
         {"id": paper.id, "title": paper.title, "evidence": paper.abstract[:4500]} for paper in papers
     ])
-    ranked = sorted(papers, key=lambda paper: -scores[paper.id])
+    ranked = sorted((paper for paper in papers if scores[paper.id] >= 2),
+                    key=lambda paper: -scores[paper.id])
     selected = []
     for paper in ranked:
-        if scores[paper.id] < 2 or len(selected) >= limit:
-            break
         copy = translate(editor.paper, paper)
         if copy is not None:
             selected.append(copy)
+            if len(selected) == limit:
+                break
+    if len(selected) < min(limit, len(ranked)):
+        raise ValueError("Hugging Face 入选论文的译文生成失败，本期未发信。")
     return selected
 
 

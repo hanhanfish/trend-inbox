@@ -18,7 +18,7 @@ uv run --locked python -m agent_digest.setup_wizard
 
 `uv` 会选择可用的 Python 3.12 或更高版本，并按锁文件安装依赖。
 
-向导里选择模型服务，再填写该服务商控制台里的模型 ID 和 API 密钥。重新配置同一服务商时，可以回车沿用自己上次保存的模型 ID。填写发件和收件地址及邮箱授权码，QQ、163、126 和 Gmail 会自动带出 SMTP 参数。确认收到测试邮件后，Windows 可在向导里登记定时任务，macOS 和 Linux 按下面的 cron 步骤设置。
+向导里选择模型服务，再填写该服务商控制台里的模型 ID 和 API 密钥。重新配置同一服务商时，可以回车沿用自己上次保存的模型 ID。填写发件和收件地址及邮箱授权码，QQ、163、126 和 Gmail 会自动带出 SMTP 参数。向导会检查模型、邮箱和两个榜单来源。确认收到测试邮件后，Windows 可在向导里登记定时任务，macOS 和 Linux 按下面的 cron 步骤设置。
 
 ### 手动配置
 
@@ -76,6 +76,7 @@ uv run --locked python -m agent_digest.setup_wizard
 
 - 日刊和周刊日志在 `.digest/daily.log` 与 `.digest/weekly.log`。SQLite 状态保存在 `.digest/state.sqlite3`，用于同一期去重和跳过已发送的论文。
 - 正式发送需要显式传 `--send`。默认命令生成预览。榜单连接失败时，程序分别等 30 秒、90 秒和 3 分钟后重试。所需榜单仍无法获取时，本期不发信，也不会记为已发。网络恢复后可以手动重跑本期。
+- 入选论文的译文生成失败且其他候选不足以补齐时，程序停止本期发送，并在日志里指出原因。
 - 访问 Hugging Face 需要代理时，可以在 `.env` 设置 `HF_PROXY_URL` 为你的 HTTP(S) 代理地址。它只用于 Hugging Face 请求。定时运行时代理也需要在线。
 - 邮件传输若遇到结果不确定的中断，系统保留发送记录。先确认原任务已退出，再检查邮箱。确认已到达时用 `--resolve sent`，确认需要重试时用 `--resolve retry`。
 

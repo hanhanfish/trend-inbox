@@ -46,8 +46,9 @@ def public_url(value: str, hosts: set[str] | None = None) -> str:
     return ""
 
 
-def hf_get(session: requests.Session, path: str, **kwargs) -> requests.Response:
-    proxy = os.getenv("HF_PROXY_URL")
+def hf_get(session: requests.Session, path: str, *, proxy: str | None = None, **kwargs) -> requests.Response:
+    if proxy is None:
+        proxy = os.getenv("HF_PROXY_URL")
     if proxy:
         kwargs["proxies"] = {"https": proxy}
     return get(session, f"{HF}/{path}", **kwargs)
@@ -79,10 +80,11 @@ class Project:
         return f"{GITHUB}/{self.name}"
 
 
-def latest_papers(session: requests.Session, edition: date, lookback: int) -> tuple[date, list[Paper]]:
+def latest_papers(session: requests.Session, edition: date, lookback: int,
+                  *, proxy: str | None = None) -> tuple[date, list[Paper]]:
     for offset in range(lookback + 1):
         day = edition - timedelta(days=offset)
-        rows = hf_get(session, "api/daily_papers", params={"date": day.isoformat()}).json()
+        rows = hf_get(session, "api/daily_papers", proxy=proxy, params={"date": day.isoformat()}).json()
         if not isinstance(rows, list):
             raise ValueError("HF Daily Papers 返回格式变化")
         if not rows:
@@ -103,7 +105,7 @@ def latest_papers(session: requests.Session, edition: date, lookback: int) -> tu
             abstract = row.get("summary") or paper.get("summary") or ""
             if not abstract:
                 try:
-                    abstract = hf_get(session, f"api/papers/{identifier}").json().get("summary", "")
+                    abstract = hf_get(session, f"api/papers/{identifier}", proxy=proxy).json().get("summary", "")
                 except (requests.RequestException, ValueError):
                     LOG.warning("无法获取论文摘要 %s", identifier)
             if title.strip() and abstract.strip():

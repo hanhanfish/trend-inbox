@@ -1,19 +1,24 @@
 from __future__ import annotations
 
 import re
+import os
 import shutil
 import smtplib
 import subprocess
 import sys
+from datetime import date
 from getpass import getpass
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from urllib.parse import urlsplit
 
+import requests
 from dotenv import dotenv_values, set_key
 
 from .delivery import Mailer
+from .digest import Config
 from .editorial import Editor
-from .sources import http_session
+from .sources import http_session, latest_papers, trending
 
 PROVIDERS = {
     "1": ("千问 AI 平台（按量付费）", "https://maas.qianwenaiapi.com/compatible-mode/v1"),
@@ -115,6 +120,37 @@ def save_settings(path: Path, settings: dict[str, str]) -> None:
         staged.replace(path)
 
 
+def check_sources(path: Path, old: dict[str, str]) -> None:
+    proxy = os.getenv("HF_PROXY_URL") or old.get("HF_PROXY_URL")
+    config = Config.load(Path("config.yml"))
+    with http_session() as session:
+        try:
+            _, papers = latest_papers(session, date.today(), config.hf_lookback_days, proxy=proxy)
+        except (requests.ConnectionError, requests.Timeout):
+            print("Hugging Face 连接失败。如果你的网络需要代理，请填写本机 HTTP(S) 代理地址。")
+            proxy = ask("代理地址，留空结束配置")
+            parsed = urlsplit(proxy)
+            if parsed.scheme not in ("http", "https") or not parsed.hostname:
+                raise ValueError("Hugging Face 未连通。配置已保存，修复网络后可以重新运行向导。") from None
+            try:
+                _, papers = latest_papers(session, date.today(), config.hf_lookback_days, proxy=proxy)
+            except (requests.RequestException, ValueError) as exc:
+                raise ValueError(f"Hugging Face 代理测试失败（{type(exc).__name__}），请检查代理和网络。") from None
+            if papers:
+                save_settings(path, {"HF_PROXY_URL": proxy})
+        except (requests.RequestException, ValueError) as exc:
+            raise ValueError(f"Hugging Face 论文榜检查失败（{type(exc).__name__}）。") from None
+        if not papers:
+            raise ValueError("最近几天没有可读取的 Hugging Face 论文榜，请稍后再试。")
+        print(f"Hugging Face 论文榜可用，读到 {len(papers)} 篇论文。")
+        for period, label in (("daily", "日榜"), ("weekly", "周榜")):
+            try:
+                projects = trending(session, "python", period)
+            except (requests.RequestException, ValueError) as exc:
+                raise ValueError(f"GitHub Python {label}检查失败（{type(exc).__name__}）。") from None
+            print(f"GitHub Python {label}可用，读到 {len(projects)} 个项目。")
+
+
 def register_schedule() -> None:
     daily = ask("每天发送时间（HH:MM）", "08:10")
     weekly = ask("每周发送时间（HH:MM）", "08:30")
@@ -141,6 +177,7 @@ def main() -> int:
         mail, mailer = mail_settings(old)
         save_settings(path, model | mail)
         print("本机配置已保存。")
+        check_sources(path, old)
         if not confirm(f"向 {mailer.recipient} 发送一封连接测试邮件？"):
             return 0
         body = "Trend Inbox 已连通发件邮箱。这封测试信不会占用今天的早报期号。"

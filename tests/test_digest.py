@@ -1,5 +1,6 @@
 import smtplib
 import unittest
+from argparse import Namespace
 from datetime import date, datetime, timezone
 from email import policy
 from email.parser import BytesParser
@@ -9,15 +10,26 @@ from unittest.mock import MagicMock, patch
 
 from requests.exceptions import SSLError
 
-from agent_digest.__main__ import edition_for
+from agent_digest.__main__ import edition_for, run
 from agent_digest.delivery import Mailer, Rejected, State, Uncertain
-from agent_digest.digest import Config, build_digest, fetch_source
+from agent_digest.digest import Config, Digest, build_digest, fetch_source, select_papers
 from agent_digest.editorial import Editor, verified_translation
 from agent_digest.render import render
 from agent_digest.sources import Paper, Project, parse_trending
 
 
 class EditorialTest(unittest.TestCase):
+    def test_eligible_paper_translation_failure_stops_the_issue(self):
+        day = date(2026, 11, 16)
+        paper = Paper("2611.12345", "An agent paper", "Abstract.", str(day), day,
+                      "https://huggingface.co/papers/2611.12345")
+        editor = MagicMock()
+        editor.relevance.return_value = {paper.id: 3}
+        editor.paper.side_effect = ValueError("invalid translation")
+        with self.assertRaisesRegex(ValueError, "译文生成失败，本期未发信"):
+            select_papers(editor, [paper], 2)
+        self.assertEqual(editor.paper.call_count, 2)
+
     def test_keeps_structure_and_rejects_changed_facts(self):
         original = "A [paper](https://example.org/) with 1,024 steps."
         good = "这篇[论文](https://example.org/)包含 1024 步。"
@@ -103,6 +115,34 @@ class CollectionTest(unittest.TestCase):
 
 
 class DeliveryTest(unittest.TestCase):
+    def test_cli_only_records_a_successful_send_and_skips_duplicates(self):
+        day = "2026-11-16"
+        digest = Digest("daily", day, datetime(2026, 11, 16, tzinfo=timezone.utc), [], [], [], [])
+        with TemporaryDirectory() as folder:
+            root = Path(folder)
+            args = Namespace(kind="daily", edition=day, timezone="UTC", state=root / "state.sqlite3", resolve=None,
+                             send=True, config=Path("config.yml"), output=root / "preview")
+            with (patch("agent_digest.__main__.Mailer.from_environment") as factory,
+                  patch("agent_digest.__main__.Editor"),
+                  patch("agent_digest.__main__.build_digest", side_effect=[ValueError("source down"), digest, digest]) as build):
+                mail = factory.return_value
+                with self.assertRaisesRegex(ValueError, "source down"):
+                    run(args)
+                self.assertIsNone(State(args.state).status("daily", day))
+                mail.send.assert_not_called()
+
+                mail.send.side_effect = Rejected("rejected")
+                with self.assertRaises(Rejected):
+                    run(args)
+                self.assertIsNone(State(args.state).status("daily", day))
+
+                mail.send.side_effect = None
+                run(args)
+                run(args)
+                self.assertEqual(State(args.state).status("daily", day), "sent")
+                self.assertEqual(build.call_count, 3)
+                self.assertEqual(mail.send.call_count, 2)
+
     def test_state_reservation_survives_reopen_and_weekly_is_independent(self):
         with TemporaryDirectory() as root:
             path = Path(root) / "state.db"

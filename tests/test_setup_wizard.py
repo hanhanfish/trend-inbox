@@ -5,6 +5,7 @@ from tempfile import TemporaryDirectory
 from unittest.mock import MagicMock, patch
 
 from dotenv import dotenv_values
+from requests.exceptions import SSLError
 
 from agent_digest import setup_wizard as wizard
 
@@ -55,9 +56,24 @@ class SetupWizardTest(unittest.TestCase):
               patch.object(wizard, "model_settings", return_value={}),
               patch.object(wizard, "mail_settings", return_value=({}, mailer)),
               patch.object(wizard, "save_settings"),
+              patch.object(wizard, "check_sources"),
               patch.object(wizard, "confirm", return_value=True) as confirm,
               patch.object(wizard, "register_schedule") as register):
             self.assertEqual(wizard.main(), 0)
         confirm.assert_called_once()
         mailer.send.assert_called_once()
         register.assert_not_called()
+
+    def test_wizard_verifies_proxy_and_both_github_lists(self):
+        path = Path(".env")
+        with (patch.dict(os.environ, {}, clear=True),
+              patch.object(wizard.Config, "load", return_value=wizard.Config()),
+              patch.object(wizard, "http_session"),
+              patch.object(wizard, "latest_papers", side_effect=[SSLError(), (None, [object()])]) as hf,
+              patch.object(wizard, "trending", return_value=[object()]) as trending,
+              patch.object(wizard, "ask", return_value="http://127.0.0.1:8118"),
+              patch.object(wizard, "save_settings") as save):
+            wizard.check_sources(path, {})
+        self.assertEqual(hf.call_args.kwargs["proxy"], "http://127.0.0.1:8118")
+        self.assertEqual([call.args[1:] for call in trending.call_args_list], [("python", "daily"), ("python", "weekly")])
+        save.assert_called_once_with(path, {"HF_PROXY_URL": "http://127.0.0.1:8118"})
