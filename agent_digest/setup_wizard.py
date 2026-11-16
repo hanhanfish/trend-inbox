@@ -16,8 +16,8 @@ from .editorial import Editor
 from .sources import http_session
 
 PROVIDERS = {
-    "1": ("千问 AI 平台（按量付费）", "https://maas.qianwenaiapi.com/compatible-mode/v1", "qwen3.8-flash"),
-    "2": ("OpenAI", "https://api.openai.com/v1", "gpt-5-mini"),
+    "1": ("千问 AI 平台（按量付费）", "https://maas.qianwenaiapi.com/compatible-mode/v1"),
+    "2": ("OpenAI", "https://api.openai.com/v1"),
 }
 MAIL_HOSTS = {
     "qq.com": ("smtp.qq.com", "465"),
@@ -43,20 +43,24 @@ def secret(label: str, saved: str) -> str:
 
 def model_settings(old: dict[str, str]) -> dict[str, str]:
     print("\n模型服务")
-    for index, (label, _, _) in PROVIDERS.items():
+    for index, (label, _) in PROVIDERS.items():
         print(f"  {index}. {label}")
     print("  3. 其他 OpenAI 兼容服务")
     previous_url = old.get("LLM_BASE_URL", "").rstrip("/")
-    default = next((key for key, (_, url, _) in PROVIDERS.items() if url == previous_url), "3" if previous_url else "1")
+    default = next((key for key, (_, url) in PROVIDERS.items() if url == previous_url), "3" if previous_url else "1")
     choice = ask("选择模型服务", default)
     if choice == "3":
-        url, recommended_model = ask("Base URL", previous_url if default == "3" else ""), ""
+        url = ask("Base URL", previous_url if default == "3" else "")
     elif choice in PROVIDERS:
-        _, url, recommended_model = PROVIDERS[choice]
+        _, url = PROVIDERS[choice]
     else:
         raise ValueError("请选择 1、2 或 3。")
     same_provider = previous_url == url.rstrip("/")
-    model = ask("模型 ID", (old.get("LLM_MODEL", "") if same_provider else "") or recommended_model)
+    saved_model = old.get("LLM_MODEL", "") if same_provider else ""
+    model = ask("输入服务商控制台中的模型 ID", saved_model)
+    while not model:
+        print("请填写你的账号可用的模型 ID。")
+        model = ask("模型 ID")
     key = secret("模型 API 密钥", old.get("LLM_API_KEY", "") if same_provider else "")
     with http_session() as session:
         editor = Editor(session, url, key, model)
@@ -129,9 +133,9 @@ def register_schedule() -> None:
 
 def main() -> int:
     if not sys.stdin.isatty():
-        print("请在可交互的 Windows 终端运行安装向导。")
+        print("请在可交互的终端运行配置向导。")
         return 1
-    print("榜上早报 Windows 安装向导")
+    print("Trend Inbox 配置向导")
     path = Path(".env")
     try:
         old = {key: value for key, value in dotenv_values(path, encoding="utf-8-sig").items()
@@ -142,11 +146,14 @@ def main() -> int:
         print("本机配置已保存。")
         if not confirm(f"向 {mailer.recipient} 发送一封连接测试邮件？"):
             return 0
-        body = "榜上早报已连通发件邮箱。这封测试信不会占用今天的早报期号。"
-        mailer.send("榜上早报 · 发信测试", body, f"<p>{body}</p>")
+        body = "Trend Inbox 已连通发件邮箱。这封测试信不会占用今天的早报期号。"
+        mailer.send("Trend Inbox · 发信测试", body, f"<p>{body}</p>")
         print("发件服务器已接收测试邮件。请在收件箱查看。")
-        if confirm("收到测试邮件后，是否现在设置本地定时任务？"):
-            register_schedule()
+        if sys.platform == "win32":
+            if confirm("收到测试邮件后，是否现在设置本地定时任务？"):
+                register_schedule()
+        else:
+            print("收到测试邮件后，按 README 的 macOS / Linux 定时步骤添加任务。")
     except (ValueError, OSError, RuntimeError, subprocess.CalledProcessError, EOFError, KeyboardInterrupt) as exc:
         print(f"安装向导停止：{exc}")
         return 1

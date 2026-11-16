@@ -2,7 +2,7 @@ import os
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from dotenv import dotenv_values
 
@@ -13,13 +13,17 @@ class SetupWizardTest(unittest.TestCase):
     @patch("agent_digest.setup_wizard.Editor")
     @patch("agent_digest.setup_wizard.Mailer.check_login")
     @patch("agent_digest.setup_wizard.getpass", side_effect=["test-model-key", "test smtp code"])
-    @patch("agent_digest.setup_wizard.ask", side_effect=["1", "qwen3.8-flash", "demo@qq.com", "demo@qq.com"])
+    @patch("agent_digest.setup_wizard.ask", side_effect=["1", "another-qwen-model", "demo@qq.com", "demo@qq.com"])
     def test_qwen_and_qq_defaults_with_private_settings(self, ask, masked, smtp_login, editor):
         editor.return_value.ask.return_value = {"ok": True}
-        model = wizard.model_settings({"LLM_BASE_URL": "https://api.openai.com/v1", "LLM_API_KEY": "previous"})
+        model = wizard.model_settings({"LLM_BASE_URL": "https://api.openai.com/v1", "LLM_API_KEY": "previous",
+                                       "LLM_MODEL": "previous-model"})
         mail, _ = wizard.mail_settings({})
         self.assertEqual(model["LLM_BASE_URL"], "https://maas.qianwenaiapi.com/compatible-mode/v1")
         self.assertEqual(model["LLM_API_KEY"], "test-model-key")
+        self.assertEqual(model["LLM_MODEL"], "another-qwen-model")
+        self.assertEqual(ask.call_args_list[1].args[1], "")
+        self.assertEqual(editor.call_args.args[3], "another-qwen-model")
         self.assertEqual(mail["SMTP_HOST"], "smtp.qq.com")
         self.assertEqual(mail["SMTP_PORT"], "465")
         self.assertEqual(mail["SMTP_PASSWORD"], "testsmtpcode")
@@ -42,3 +46,18 @@ class SetupWizardTest(unittest.TestCase):
         args = run.call_args_list[0].args[0]
         self.assertEqual(args[-6:], ["-DailyAt", "07:20", "-WeeklyAt", "09:45", "-WeeklyDay", "Sunday"])
         self.assertIn("NextRunTime", run.call_args_list[1].args[0][-1])
+
+    def test_mac_uses_shared_configuration_without_invoking_windows_scheduler(self):
+        mailer = MagicMock(recipient="demo@example.com")
+        with (patch.object(wizard.sys, "platform", "darwin"),
+              patch.object(wizard.sys.stdin, "isatty", return_value=True),
+              patch.object(wizard.Path, "exists", return_value=False),
+              patch.object(wizard, "model_settings", return_value={}),
+              patch.object(wizard, "mail_settings", return_value=({}, mailer)),
+              patch.object(wizard, "save_settings"),
+              patch.object(wizard, "confirm", return_value=True) as confirm,
+              patch.object(wizard, "register_schedule") as register):
+            self.assertEqual(wizard.main(), 0)
+        confirm.assert_called_once()
+        mailer.send.assert_called_once()
+        register.assert_not_called()
