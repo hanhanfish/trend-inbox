@@ -41,11 +41,11 @@ class SetupWizardTest(unittest.TestCase):
 
     @patch("agent_digest.setup_wizard.subprocess.run")
     @patch("agent_digest.setup_wizard.ask", side_effect=["07:20", "09:45", "7"])
-    def test_register_uses_requested_times_and_displays_next_runs(self, ask, run):
+    def test_register_uses_requested_times_in_one_powershell_call(self, ask, run):
         wizard.register_schedule()
         args = run.call_args_list[0].args[0]
         self.assertEqual(args[-6:], ["-DailyAt", "07:20", "-WeeklyAt", "09:45", "-WeeklyDay", "Sunday"])
-        self.assertIn("NextRunTime", run.call_args_list[1].args[0][-1])
+        run.assert_called_once()
 
     def test_mac_uses_shared_configuration_without_invoking_windows_scheduler(self):
         mailer = MagicMock(recipient="demo@example.com")

@@ -126,9 +126,6 @@ def register_schedule() -> None:
     subprocess.run(["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
                     "install-schedule.ps1", "-Python", sys.executable, "-DailyAt", daily,
                     "-WeeklyAt", weekly, "-WeeklyDay", WEEKDAYS[int(weekday) - 1]], check=True)
-    subprocess.run(["powershell.exe", "-NoProfile", "-Command",
-                    "Get-ScheduledTaskInfo -TaskName 'Agent Digest Daily','Agent Digest Weekly' | "
-                    "Format-Table TaskName,NextRunTime -AutoSize"], check=True)
 
 
 def main() -> int:

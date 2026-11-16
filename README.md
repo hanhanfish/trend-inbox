@@ -7,16 +7,16 @@
 
 ## 本地安装
 
-Windows、macOS 和 Linux 使用同一套安装命令。先安装 `uv`。Windows 可以用 `winget install --id astral-sh.uv -e`，macOS 可以用 `brew install uv`。其他方式见 [uv 官方安装说明](https://docs.astral.sh/uv/getting-started/installation/)。
+下载并解压发行包。Windows 双击 `setup-windows.bat`，macOS 在项目目录运行 `bash setup-mac.sh`。如果还没有 `uv`，按提示确认后，脚本会把它下载到当前项目目录并继续安装。
 
-解压源码包或克隆仓库，在项目根目录运行：
+已有 `uv` 的用户也可以在项目根目录直接运行：
 
 ```text
 uv sync --locked
 uv run --locked python -m agent_digest.setup_wizard
 ```
 
-`uv` 会选择可用的 Python 3.12 或更高版本，并按锁文件安装依赖。Windows 也可以双击 `setup-windows.bat`；macOS 也可以运行 `bash setup-mac.sh`。两个入口执行上面同样的命令。
+`uv` 会选择可用的 Python 3.12 或更高版本，并按锁文件安装依赖。
 
 向导里选择模型服务，再填写该服务商控制台里的模型 ID 和 API 密钥。重新配置同一服务商时，可以回车沿用自己上次保存的模型 ID。填写发件和收件地址及邮箱授权码，QQ、163、126 和 Gmail 会自动带出 SMTP 参数。确认收到测试邮件后，Windows 可在向导里登记定时任务，macOS 和 Linux 按下面的 cron 步骤设置。
 

@@ -55,4 +55,10 @@ foreach ($task in $tasks) {
     Register-ScheduledTask -TaskName $task.Name -Action $action -Trigger $trigger `
         -Principal $principal -Settings $settings -Force | Out-Null
     Write-Output "Configured $($task.Name) ($($task.Schedule))"
+    try {
+        $info = Get-ScheduledTaskInfo -TaskPath '\' -TaskName $task.Name -ErrorAction Stop
+        Write-Output "Next run: $($info.NextRunTime.ToString('yyyy-MM-dd HH:mm'))"
+    } catch {
+        Write-Warning "Task registered. Check the next run time in Windows Task Scheduler."
+    }
 }

@@ -1,18 +1,8 @@
 @echo off
 setlocal
 chcp 65001 >nul
-pushd "%~dp0" || exit /b 1
-where uv.exe >nul 2>&1
-if errorlevel 1 (
-    echo Install uv first: winget install --id astral-sh.uv -e
-    echo Then reopen this installer.
-    popd
-    pause
-    exit /b 1
-)
-uv sync --locked && uv run --locked python -m agent_digest.setup_wizard
+"%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File "%~dp0setup-windows.ps1" %*
 set "RESULT=%ERRORLEVEL%"
-popd
 echo.
 if not "%RESULT%"=="0" echo Setup stopped. See the message above.
 pause
