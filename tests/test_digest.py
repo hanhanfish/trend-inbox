@@ -7,9 +7,11 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import MagicMock, patch
 
+from requests.exceptions import SSLError
+
 from agent_digest.__main__ import edition_for
 from agent_digest.delivery import Mailer, Rejected, State, Uncertain
-from agent_digest.digest import Config, build_digest
+from agent_digest.digest import Config, build_digest, fetch_source
 from agent_digest.editorial import Editor, verified_translation
 from agent_digest.render import render
 from agent_digest.sources import Paper, Project, parse_trending
@@ -26,6 +28,26 @@ class EditorialTest(unittest.TestCase):
 
 
 class CollectionTest(unittest.TestCase):
+    @patch("agent_digest.digest.sleep")
+    def test_source_retries_an_ssl_disconnect(self, sleep):
+        fetch = MagicMock(side_effect=[SSLError("connection ended"), ["paper"]])
+        self.assertEqual(fetch_source("HF", fetch), ["paper"])
+        sleep.assert_called_once_with(30)
+
+    @patch("agent_digest.digest.sleep")
+    @patch("agent_digest.digest.trending")
+    @patch("agent_digest.digest.latest_papers", side_effect=SSLError("connection ended"))
+    def test_daily_does_not_build_a_partial_report_when_hugging_face_stays_down(self, hf, trending, sleep):
+        editor = MagicMock()
+        day = date(2026, 11, 16)
+        with self.assertRaisesRegex(ValueError, "Hugging Face.*本期未发信"):
+            build_digest(MagicMock(), editor, Config(), kind="daily", edition=day.isoformat(), edition_day=day,
+                         now=datetime(2026, 11, 16, tzinfo=timezone.utc), seen=set())
+        self.assertEqual(hf.call_count, 4)
+        self.assertEqual([call.args[0] for call in sleep.call_args_list], [30, 90, 180])
+        trending.assert_not_called()
+        editor.relevance.assert_not_called()
+
     def test_trending_metadata(self):
         html = '''<article class="Box-row"><h2><a href="/a/replay">a/replay</a></h2>
         <p>Debug agents</p><span itemprop="programmingLanguage">TypeScript</span>

@@ -4,6 +4,7 @@ import logging
 from dataclasses import dataclass, replace
 from datetime import date, datetime
 from pathlib import Path
+from time import sleep
 
 import requests
 import yaml
@@ -13,6 +14,24 @@ from .sources import GITHUB, Paper, Project, latest_papers, trending
 
 LOG = logging.getLogger(__name__)
 PROJECT_LIMIT = 5
+SOURCE_RETRY_DELAYS = (30, 90, 180)
+
+
+def fetch_source(label, fetch):
+    for delay in (*SOURCE_RETRY_DELAYS, None):
+        try:
+            return fetch()
+        except requests.RequestException as exc:
+            status = exc.response.status_code if exc.response is not None else None
+            reason = f"HTTP {status}" if status else type(exc).__name__
+            transient = isinstance(exc, (requests.ConnectionError, requests.Timeout, requests.exceptions.RetryError))
+            transient |= status in (408, 429, 500, 502, 503, 504)
+            if delay is None or not transient:
+                raise ValueError(f"{label}抓取失败（{reason}），本期未发信。") from exc
+            LOG.warning("%s抓取失败（%s），%d 秒后重试", label, reason, delay)
+            sleep(delay)
+        except ValueError as exc:
+            raise ValueError(f"{label}返回内容无法读取，本期未发信。") from exc
 
 
 @dataclass(frozen=True)
@@ -84,31 +103,22 @@ def build_digest(session: requests.Session, editor: Editor, config: Config, *, k
                  edition: str, edition_day: date, now: datetime, seen: set[str]) -> Digest:
     digest = Digest(kind, edition, now, [], [], [], [])
     if kind == "daily":
-        try:
-            ranking_day, papers = latest_papers(session, edition_day, config.hf_lookback_days)
-        except (requests.RequestException, ValueError) as exc:
-            LOG.warning("HF 抓取失败 %s", type(exc).__name__)
-            digest.notes.append("Hugging Face 论文榜抓取失败。")
-        else:
-            digest.sources.append((f"HF 论文榜 · {ranking_day}" if papers else "HF 论文榜 · 未找到榜单条目",
-                                   f"https://huggingface.co/papers/date/{ranking_day}"))
-            digest.papers = select_papers(editor, [paper for paper in papers if paper.id not in seen], config.papers)
-            if len(digest.papers) < config.papers:
-                digest.notes.append(f"论文栏目收录 {len(digest.papers)} / {config.papers} 篇，符合筛选且可交付的条目不足。")
+        ranking_day, papers = fetch_source("Hugging Face 论文榜", lambda: latest_papers(
+            session, edition_day, config.hf_lookback_days))
+        if not papers:
+            raise ValueError("回看范围内没有可读取的 Hugging Face 论文榜，本期未发信。")
+        digest.sources.append((f"HF 论文榜 · {ranking_day}", f"https://huggingface.co/papers/date/{ranking_day}"))
 
     period = "daily" if kind == "daily" else "weekly"
     window = "日榜" if kind == "daily" else "周榜"
-    try:
-        entries = trending(session, "python", period)
-    except (requests.RequestException, ValueError) as exc:
-        LOG.warning("GitHub Python %s 抓取失败 %s", window, type(exc).__name__)
-        digest.notes.append(f"GitHub Python {window}抓取失败。")
-    else:
-        digest.sources.append((f"GitHub Python {window}", f"{GITHUB}/trending/python?since={period}"))
-        projects = entries[:PROJECT_LIMIT]
-        translations = translate(editor.project_descriptions, projects) or {}
-        digest.projects = [replace(project, description=translations.get(project.name, project.description))
-                           for project in projects]
-    if not digest.sources:
-        raise ValueError("本期数据源全部抓取失败，未生成邮件")
+    entries = fetch_source(f"GitHub Python {window}", lambda: trending(session, "python", period))
+    digest.sources.append((f"GitHub Python {window}", f"{GITHUB}/trending/python?since={period}"))
+    if kind == "daily":
+        digest.papers = select_papers(editor, [paper for paper in papers if paper.id not in seen], config.papers)
+        if len(digest.papers) < config.papers:
+            digest.notes.append(f"论文栏目收录 {len(digest.papers)} / {config.papers} 篇，符合筛选且可交付的条目不足。")
+    projects = entries[:PROJECT_LIMIT]
+    translations = translate(editor.project_descriptions, projects) or {}
+    digest.projects = [replace(project, description=translations.get(project.name, project.description))
+                       for project in projects]
     return digest

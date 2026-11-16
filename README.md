@@ -75,7 +75,8 @@ uv run --locked python -m agent_digest.setup_wizard
 ## 排错与补发
 
 - 日刊和周刊日志在 `.digest/daily.log` 与 `.digest/weekly.log`。SQLite 状态保存在 `.digest/state.sqlite3`，用于同一期去重和跳过已发送的论文。
-- 正式发送需要显式传 `--send`。默认命令生成预览。全部数据源失败时本次报错；部分失败时仍发可用栏目，邮件标明缺失。
+- 正式发送需要显式传 `--send`。默认命令生成预览。榜单连接失败时，程序分别等 30 秒、90 秒和 3 分钟后重试。所需榜单仍无法获取时，本期不发信，也不会记为已发。网络恢复后可以手动重跑本期。
+- 访问 Hugging Face 需要代理时，可以在 `.env` 设置 `HF_PROXY_URL` 为你的 HTTP(S) 代理地址。它只用于 Hugging Face 请求。定时运行时代理也需要在线。
 - 邮件传输若遇到结果不确定的中断，系统保留发送记录。先确认原任务已退出，再检查邮箱。确认已到达时用 `--resolve sent`，确认需要重试时用 `--resolve retry`。
 
 ```powershell

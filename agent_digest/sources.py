@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import re
 from dataclasses import dataclass, field
 from datetime import date, timedelta
@@ -45,6 +46,13 @@ def public_url(value: str, hosts: set[str] | None = None) -> str:
     return ""
 
 
+def hf_get(session: requests.Session, path: str, **kwargs) -> requests.Response:
+    proxy = os.getenv("HF_PROXY_URL")
+    if proxy:
+        kwargs["proxies"] = {"https": proxy}
+    return get(session, f"{HF}/{path}", **kwargs)
+
+
 @dataclass(frozen=True)
 class Paper:
     id: str
@@ -74,7 +82,7 @@ class Project:
 def latest_papers(session: requests.Session, edition: date, lookback: int) -> tuple[date, list[Paper]]:
     for offset in range(lookback + 1):
         day = edition - timedelta(days=offset)
-        rows = get(session, f"{HF}/api/daily_papers", params={"date": day.isoformat()}).json()
+        rows = hf_get(session, "api/daily_papers", params={"date": day.isoformat()}).json()
         if not isinstance(rows, list):
             raise ValueError("HF Daily Papers 返回格式变化")
         if not rows:
@@ -95,7 +103,7 @@ def latest_papers(session: requests.Session, edition: date, lookback: int) -> tu
             abstract = row.get("summary") or paper.get("summary") or ""
             if not abstract:
                 try:
-                    abstract = get(session, f"{HF}/api/papers/{identifier}").json().get("summary", "")
+                    abstract = hf_get(session, f"api/papers/{identifier}").json().get("summary", "")
                 except (requests.RequestException, ValueError):
                     LOG.warning("无法获取论文摘要 %s", identifier)
             if title.strip() and abstract.strip():
